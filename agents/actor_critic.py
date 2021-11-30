@@ -184,5 +184,5 @@ class A2C:
             self.logs[ep_no]['r_avg_units_held'] = avg_units_held
 
             if ep_no % self.log_freq == 0:
-                print(f'\nEp: {ep_no} | L: {ep_loss} | R: {ep_reward} | R.Avg.R: {avg_reward} | P: {avg_p} | R.Avg P: {avg_profits} | B: {avg_b} | R.Avg B: {avg_bal} | R.N_Units: {avg_units_held}', end='')
+                print(f'\nEp: {ep_no} | L: {ep_loss} | R: {ep_reward} | R.Avg.R: {avg_reward} | P: {avg_p} | R.Avg P: {avg_profit} | B: {avg_b} | R.Avg B: {avg_bal} | R.N_Units: {avg_units_held}', end='')
                 
