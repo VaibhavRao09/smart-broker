@@ -7,11 +7,13 @@ import pandas as pd
 MAX_INT = 2147483647
 MAX_STEPS = 500
 
+
 class Actions:
     Buy = 0
     Sell = 1
     Hold = 2
     N = 3
+
 
 class SmartBrokerEnv(OpenAIEnv):
     def __init__(
@@ -109,8 +111,14 @@ class SmartBrokerEnv(OpenAIEnv):
         return obs
             
     def _act(self, action):
-        action_type = action[0]
-        amount = action[1]
+        # default to selling or buying all the stocks
+        if isinstance(action, list):
+            action_type = action[0]
+            amount = action[1]
+        else:
+            action_type = action
+            amount = 1
+            
         curr_price = self.df.iloc[self.curr_step][self.price_typ]
         units_bought = 0
         units_sold = 0
@@ -129,7 +137,7 @@ class SmartBrokerEnv(OpenAIEnv):
         self.net_worth = self.balance + self.units_held * curr_price
         
         info = {
-            'amount': action[1],
+            'amount': amount,
             'curr_step': self.curr_step,
             'units_bought': units_bought,
             'units_sold': units_sold,
@@ -150,17 +158,18 @@ class SmartBrokerEnv(OpenAIEnv):
     def step(self, action):
         info = self._act(action)
         self.curr_step += 1
-            
+
         alpha = (self.curr_step / MAX_STEPS)
-        reward = self.balance * alpha
+        info['reward'] = self.balance
+        reward = self.balance / MAX_INT
         done = self.net_worth <= 0 or self.curr_step == MAX_STEPS
         obs = self._get_obs()
-        
+
         if self.curr_step > self.df.shape[0] - self.batch_dur:
             self.curr_step = random.randint(self.roll_period, self.df.shape[0] - self.batch_dur)
-        
+
         return obs, reward, done, info
-    
+
     def render(self, show=False):
         print(f'curr_step: {self.curr_step}')
         print(f'balance: {self.balance}')
