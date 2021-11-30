@@ -76,6 +76,7 @@ class A2C:
         ep_ended = False
         ep_reward = 0
         ep_loss = 0
+        net_worth = 0
         profit = 0
         bal = 0
         units_held = 0
@@ -93,6 +94,7 @@ class A2C:
             profit += info.get('profit')
             bal += info.get('balance')
             units_held += info.get('units_held')
+            net_worth += info.get('net_worth')
             state = nxt_state
             ts += 1
 
@@ -115,7 +117,7 @@ class A2C:
         self.actor_optmz.step()
         self.critic_optmz.step()
 
-        return net_loss, ep_reward, profit, bal, units_held, ts
+        return net_loss.item(), ep_reward, profit, bal, units_held, net_worth, ts
 
     def evaluate(self, ep=None):
         if not ep:
@@ -138,17 +140,23 @@ class A2C:
             self.eval_logs[ep_no]['reward'] = ep_reward
 
     def run(self, ep=1000):
-        rewards = []
         rewards = deque(maxlen=50)
         profits = deque(maxlen=50)
         bals = deque(maxlen=50)
+        units_held_l = deque(maxlen=50)
+        losses = deque(maxlen=50)
+        net_worth_l = deque(maxlen=50)
 
         for ep_no in range(ep):
-            ep_loss, ep_reward, profit, bal, units_held, ts = self.train()
+            ep_loss, ep_reward, profit, bal, units_held, net_worth, ts = self.train()
+            ep_loss = round(ep_loss, 3)
             ep_reward = round(ep_reward, 2)
             avg_p = int(profit/ts)
             avg_b = int(bal/ts)
             avg_u_h = int(units_held/ts)
+
+            losses.append(ep_loss)
+            avg_loss = round(np.mean(losses), 2)
 
             rewards.append(ep_reward)
             avg_reward = round(np.mean(rewards), 2)
@@ -157,18 +165,24 @@ class A2C:
             avg_bal = int(np.mean(bals))
 
             profits.append(avg_p)
-            avg_profits = int(np.mean(profits))
+            avg_profit = int(np.mean(profits))
+
+            units_held_l.append(avg_u_h)
+            avg_units_held = int(np.mean(units_held_l))
+
+            net_worth_l.append(net_worth)
+            avg_net_worth = round(np.mean(net_worth_l), 2)
 
             # save logs for analysis
             rewards.append(ep_reward)
-            avg_reward = np.mean(rewards)
             self.logs[ep_no]['reward'] = ep_reward
             self.logs[ep_no]['r_avg_reward'] = avg_reward
-            self.logs[ep_no]['r_avg_profit'] = avg_profits
+            self.logs[ep_no]['r_avg_loss'] = avg_loss
+            self.logs[ep_no]['r_avg_net_worth'] = avg_net_worth
+            self.logs[ep_no]['r_avg_profit'] = avg_profit
             self.logs[ep_no]['r_avg_bal'] = avg_bal
-            self.logs[ep_no]['avg_units_held'] = avg_u_h
+            self.logs[ep_no]['r_avg_units_held'] = avg_units_held
 
             if ep_no % self.log_freq == 0:
-                ls = round(ep_loss.item(), 3)
-                print(f'\nEp: {ep_no} | L: {ls} | R: {ep_reward} | R.Avg.R: {avg_reward} | P: {avg_p} | R.Avg P: {avg_profits} | B: {avg_b} | R.Avg B: {avg_bal} | N_Units: {avg_u_h}', end='')
+                print(f'\nEp: {ep_no} | L: {ep_loss} | R: {ep_reward} | R.Avg.R: {avg_reward} | P: {avg_p} | R.Avg P: {avg_profits} | B: {avg_b} | R.Avg B: {avg_bal} | R.N_Units: {avg_units_held}', end='')
                 

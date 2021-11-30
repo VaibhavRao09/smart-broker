@@ -160,8 +160,8 @@ class SmartBrokerEnv(OpenAIEnv):
         self.curr_step += 1
 
         alpha = (self.curr_step / MAX_STEPS)
-        info['reward'] = self.balance
-        reward = self.balance / MAX_INT
+        info['reward'] = self.net_worth - self.init_balance
+        reward = (self.net_worth - self.init_balance) / MAX_INT
         done = self.net_worth <= 0 or self.curr_step == MAX_STEPS
         obs = self._get_obs()
 
