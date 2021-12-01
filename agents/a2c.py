@@ -159,7 +159,7 @@ class A2C:
         self.actor_optmz.step()
         self.critic_optmz.step()
 
-        return net_loss.item(), ep_reward, profit, bal, units_held, net_worth, ts
+        return net_loss.item(), ep_reward/ts, profit/ts, bal/ts, units_held/ts, net_worth/ts
 
     def evaluate(self, ep=None):
         if not ep:
@@ -190,12 +190,11 @@ class A2C:
         net_worth_l = deque(maxlen=50)
 
         for ep_no in range(ep):
-            ep_loss, ep_reward, profit, bal, units_held, net_worth, ts = self.train()
+            ep_loss, ep_reward, profit, bal, units_held, net_worth = self.train()
             ep_loss = round(ep_loss, 3)
             ep_reward = round(ep_reward, 2)
-            avg_p = int(profit/ts)
-            avg_b = int(bal/ts)
-            avg_u_h = int(units_held/ts)
+            profit = round(profit, 2)
+            bal = round(bal, 2)
 
             losses.append(ep_loss)
             avg_loss = round(np.mean(losses), 2)
@@ -203,13 +202,13 @@ class A2C:
             rewards.append(ep_reward)
             avg_reward = round(np.mean(rewards), 2)
 
-            bals.append(avg_b)
+            bals.append(bal)
             avg_bal = int(np.mean(bals))
 
-            profits.append(avg_p)
+            profits.append(profit)
             avg_profit = int(np.mean(profits))
 
-            units_held_l.append(avg_u_h)
+            units_held_l.append(units_held)
             avg_units_held = int(np.mean(units_held_l))
 
             net_worth_l.append(net_worth)
@@ -226,5 +225,5 @@ class A2C:
             self.logs[ep_no]['r_avg_units_held'] = avg_units_held
 
             if ep_no % self.log_freq == 0:
-                print(f'\nEp: {ep_no} | L: {ep_loss} | R: {ep_reward} | R.Avg.R: {avg_reward} | P: {avg_p} | R.Avg P: {avg_profit} | B: {avg_b} | R.Avg B: {avg_bal} | R.N_Units: {avg_units_held}', end='')
+                print(f'\nEp: {ep_no} | L: {ep_loss} | R: {ep_reward} | R.Avg.R: {avg_reward} | P: {profit} | R.Avg P: {avg_profit} | B: {bal} | R.Avg B: {avg_bal} | R.N_Units: {avg_units_held}', end='')
                 

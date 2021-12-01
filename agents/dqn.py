@@ -288,10 +288,10 @@ class DQN:
                 state = next_state
 
             if self.replay_memory.can_sample(self.batch_size):
-                ep_reward = round(ep_reward, 2)
+                ep_reward = round(ep_reward/timestep, 2)
                 ep_loss = round(ep_loss, 3)
-                avg_p = int(profit/timestep)
-                avg_b = int(bal/timestep)
+                avg_p = round(profit/timestep, 2)
+                avg_b = round(bal/timestep, 2)
                 avg_u_h = int(units_held/timestep)
 
                 losses.append(ep_loss)
@@ -301,10 +301,10 @@ class DQN:
                 avg_reward = round(np.mean(rewards), 2)
 
                 bals.append(avg_b)
-                avg_bal = int(np.mean(bals))
+                avg_bal = round(np.mean(bals), 2)
 
                 profits.append(avg_p)
-                avg_profit = int(np.mean(profits))
+                avg_profit = round(np.mean(profits), 2)
 
                 units_held_l.append(avg_u_h)
                 avg_units_held = int(np.mean(units_held_l))

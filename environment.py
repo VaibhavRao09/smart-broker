@@ -133,7 +133,7 @@ class SmartBrokerEnv(OpenAIEnv):
             units_sold = self.units_held * amount
             self.balance += units_sold * curr_price
             self.units_held -= units_sold
-            
+
         self.net_worth = self.balance + self.units_held * curr_price
         
         info = {
@@ -159,9 +159,9 @@ class SmartBrokerEnv(OpenAIEnv):
         info = self._act(action)
         self.curr_step += 1
 
-        alpha = (self.curr_step / MAX_STEPS)
-        info['reward'] = self.net_worth - self.init_balance
-        reward = (self.net_worth - self.init_balance) / MAX_INT
+        alpha = self.curr_step / MAX_STEPS
+        reward = - self.net_worth * alpha
+        info['reward'] = reward
         done = self.net_worth <= 0 or self.curr_step == MAX_STEPS
         obs = self._get_obs()
 
