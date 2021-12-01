@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import defaultdict, deque
 import numpy as np
 from pathlib import Path
 import torch
@@ -35,16 +35,19 @@ class SAC:
         self.action_space = env.action_space
         self.hyprprms = hyprprms
         self.eps = self.hyprprms.get('eps', 1e-6)
-        self.lr = self.hyprprms.get('lr', 0.0003)
+        self.lr = self.hyprprms.get('lr', 0.0004)
         self.gamma = self.hyprprms.get('gamma', 0.95)
         self.eval_ep = self.hyprprms.get('eval_ep', 50)
         self.mem_sz = self.hyprprms.get('mem_sz', 5000)
+        self.steps = self.hyprprms.get('steps', 5000)
         self.critic_sync_f = self.hyprprms.get('critic_sync_f', 5)
         self.tau = self.hyprprms.get('tau', 0.005)
+        self.alpha = self.hyprprms.get('alpha', 0.2)
         self.save_mdls = save_mdls
         self.load_mdls = load_mdls
         self.memory = ReplayBuffer(self.mem_sz)
-        
+        self.curr_step = 0
+
         # policy network
         self.policy = networks.get(
             'policy_net',
@@ -52,7 +55,6 @@ class SAC:
                 state_dim=input_dim,
                 action_dim=self.action_space.shape[0],
                 eps=self.eps,
-                max_act=env.action_space.high,
             ),
         )
         self.policy.to(DEVICE)
@@ -60,23 +62,7 @@ class SAC:
             'policy_optmz',
             Adam(self.policy.parameters(), lr=self.lr),
         )
-        
-        # value network
-        self.value = networks.get(
-            'value_net',
-            ValueNetwork(state_dim=input_dim),
-        )
-        self.value.to(DEVICE)
-        self.tgt_value = networks.get(
-            'target_value_net',
-            ValueNetwork(state_dim=input_dim),
-        )
-        self.tgt_value.to(DEVICE)
-        self.value_optmz = optmzrs.get(
-            'value_optmz',
-            Adam(self.value.parameters(), lr=self.lr),
-        )
-        
+
         # critic network
         self.critic_a = networks.get(
             'q_net',
@@ -90,7 +76,7 @@ class SAC:
             'critic_a_optmz',
             Adam(self.critic_a.parameters(), lr=self.lr),
         )
-        # target critic network
+
         self.critic_b = networks.get(
             'q_net',
             QNetwork(
@@ -103,6 +89,25 @@ class SAC:
             'critic_b_optmz',
             Adam(self.critic_b.parameters(), lr=self.lr),
         )
+
+        # target critic network
+        self.tgt_critic_a = networks.get(
+            'q_net',
+            QNetwork(
+                state_dim=input_dim,
+                action_dim=self.action_space.shape[0],
+            )
+        )
+        self.tgt_critic_a.to(DEVICE)
+
+        self.tgt_critic_b = networks.get(
+            'q_net',
+            QNetwork(
+                state_dim=input_dim,
+                action_dim=self.action_space.shape[0],
+            )
+        )
+        self.tgt_critic_b.to(DEVICE)
 
         self.log_freq = log_freq
         self.logs = defaultdict(
@@ -119,30 +124,35 @@ class SAC:
         )
 
     def _get_action(self, state):
-        state = torch.cat([state])
+        state = torch.cat([state]).float()
         actions, _ = self.policy.sample(state, add_noise=False)
         return actions.cpu().detach().numpy()
 
-    def _sync_weights(self, tau=None):
-        if tau is None:
-            tau = self.tau
+    def _sync_weights(self, src, tgt):
+        for t, s in zip(tgt.parameters(), src.parameters()):
+            t.data.copy_(t.data * (1.0 - self.tau) + s.data * self.tau)
 
-        target_value_weights = dict(self.tgt_value.named_parameters())
-        value_weights = dict(self.value.named_parameters())
+    def _get_q(self, states, actions):
+        q1 = self.critic_a(states, actions)
+        q2 = self.critic_b(states, actions)
+        return q1, q2
 
-        for name in value_weights:
-            value_weights[name] = tau * value_weights[name].clone() + \
-                    (1-tau) * target_value_weights[name].clone()
+    def _get_target_q(self, states, actions, rewards, nxt_states, dones):
+        with torch.no_grad():
+            nxt_actions, log_probs = self.policy.sample(nxt_states)
+            nxt_q1 = self.tgt_critic_a(nxt_states, nxt_actions)
+            nxt_q2 = self.tgt_critic_b(nxt_states, nxt_actions)
+            nxt_q = torch.min(nxt_q1, nxt_q2) - self.alpha * log_probs
 
-        self.tgt_value.load_state_dict(value_weights)
+        target_q = rewards + (1.0 - dones) * self.gamma * nxt_q
+
+        return target_q
 
     def _save_models(
         self,
         policy_path=None,
         critic_b_path=None,
         critic_a_path=None,
-        tgt_value_path=None,
-        value_path=None,
     ):
         path = Path(f'../models/{self.env_name}/')
         if not path.exists():
@@ -157,25 +167,15 @@ class SAC:
         if critic_b_path is None:
             critic_b_path = path/'critic_b'
 
-        if value_path is None:
-            value_path = path/'value'
-
-        if tgt_value_path is None:
-            tgt_value_path = path/'target_value'
-
         self.policy.save(policy_path)
         self.critic_a.save(critic_a_path)
         self.critic_b.save(critic_b_path)
-        self.value.save(value_path)
-        self.tgt_value.save(tgt_value_path)
 
     def _load_models(
         self,
         policy_path=None,
         critic_b_path=None,
         critic_a_path=None,
-        tgt_value_path=None,
-        value_path=None,
     ):
         print('loading models....')
         path = Path(f'../models/{self.env_name}/')
@@ -192,57 +192,29 @@ class SAC:
             critic_b_path = path/'critic_b'
             self.critic_b.load(critic_b_path)
 
-        if value_path is not None:
-            value_path = path/'value'
-            self.value.load(value_path)
-
-        if tgt_value_path is not None:
-            tgt_value_path = path/'target_value'
-            self.tgt_value.load(tgt_value_path)
-
-    def _train_value_net(self, states):
-        pred_values = self.value(states).view(-1)
-        actions, log_probs = self.policy.sample(states, add_noise=False)
-        log_probs = log_probs.view(-1)
-
-        pred_q1_vals = self.critic_a.forward(states, actions)
-        pred_q2_vals = self.critic_b.forward(states, actions)
-        pred_q_values = torch.min(pred_q1_vals, pred_q2_vals).view(-1)
-
-        self.value_optmz.zero_grad()
-        target_values = pred_q_values - log_probs
-        val_loss = 0.5 * F.mse_loss(pred_values, target_values.detach())
-        val_loss.backward(retain_graph=True)
-        self.value_optmz.step()
-
-        return val_loss.cpu().detach().numpy()
-
     def _train_critic_net(self, states, actions, rewards, nxt_states, dones):
+        pred_q1, pred_q2 = self._get_q(states, actions)
+        target_q = self._get_target_q(states, actions, rewards, nxt_states, dones)
+
+        critic_a_loss = torch.mean((pred_q1 - target_q).pow(2))
+        critic_b_loss = torch.mean((pred_q2 - target_q).pow(2))
+
         self.critic_a_optmz.zero_grad()
-        self.critic_b_optmz.zero_grad()
-
-        target_values = self.tgt_value(nxt_states).view(-1)
-        target_q_values = rewards + (1 - dones) * self.gamma * target_values
-        pred_q1_values = self.critic_a.forward(states, actions).view(-1)
-        pred_q2_values = self.critic_b.forward(states, actions).view(-1)
-
-        critic_a_loss = 0.5 * F.mse_loss(pred_q1_values, target_q_values.detach())
-        critic_b_loss = 0.5 * F.mse_loss(pred_q2_values, target_q_values.detach())
-        critic_loss = critic_a_loss + critic_b_loss
-
-        critic_loss.backward()
+        critic_a_loss.backward()
         self.critic_a_optmz.step()
+
+        self.critic_b_optmz.zero_grad()
+        critic_b_loss.backward()
         self.critic_b_optmz.step()
 
-        return critic_loss.cpu().detach().numpy()
-
     def _train_policy_net(self, states):
-        actions, log_probs = self.policy.sample(states, add_noise=True)
-        log_probs = log_probs.view(-1)
-        pred_q1_values = self.critic_a.forward(states, actions)
-        pred_q2_values = self.critic_b.forward(states, actions)
-        pred_q_value = torch.min(pred_q1_values, pred_q2_values).view(-1)
-        policy_loss = (log_probs - pred_q_value).mean()
+        actions, entropy = self.policy.sample(states, add_noise=True)
+        entropy = entropy.view(-1)
+
+        pred_q1 = self.critic_a.forward(states, actions)
+        pred_q2 = self.critic_b.forward(states, actions)
+        q = torch.min(pred_q1, pred_q2).view(-1)
+        policy_loss = torch.mean(self.alpha * entropy - q)
 
         self.policy_optmz.zero_grad()
         policy_loss.backward(retain_graph=True)
@@ -254,14 +226,13 @@ class SAC:
         states, actions, rewards, nxt_states, dones = \
             self.memory.sample(self.mem_sz)
 
-        rewards = T(rewards, dtype=torch.float, device=DEVICE)
-        dones = T(dones, dtype=torch.float, device=DEVICE)
-        nxt_states = T(nxt_states, dtype=torch.float, device=DEVICE)
-        states = T(states, dtype=torch.float, device=DEVICE)
-        actions = T(actions, dtype=torch.float, device=DEVICE)
+        rewards = rewards.float().to(DEVICE)
+        dones = dones.float().to(DEVICE)
+        nxt_states = nxt_states.float().to(DEVICE)
+        states = states.float().to(DEVICE)
+        actions = actions.float().to(DEVICE)
 
-        value_loss = self._train_value_net(states)
-        critic_loss = self._train_critic_net(
+        self._train_critic_net(
             states,
             actions,
             rewards,
@@ -271,9 +242,10 @@ class SAC:
         policy_loss = self._train_policy_net(states)
 
         if ep_no % self.critic_sync_f:
-            self._sync_weights()
+            self._sync_weights(self.critic_a, self.tgt_critic_a)
+            self._sync_weights(self.critic_b, self.tgt_critic_b)
 
-        return value_loss, critic_loss, policy_loss
+        return policy_loss
 
     def evaluate(self, ep=None):
         if not ep:
@@ -281,7 +253,7 @@ class SAC:
 
         for ep_no in range(ep):
             state = self.env.reset()
-            state = T(state, device=DEVICE)
+            state = T(state, dtype=torch.float, device=DEVICE)
             ep_ended = False
             ep_reward = 0
             ts = 0
@@ -296,8 +268,12 @@ class SAC:
             self.eval_logs[ep_no]['reward'] = ep_reward
 
     def run(self, ep=1000):
-        print('collecting experience...')
-        rewards = []
+        rewards = deque(maxlen=50)
+        profits = deque(maxlen=50)
+        bals = deque(maxlen=50)
+        units_held_l = deque(maxlen=50)
+        losses = deque(maxlen=50)
+        net_worth_l = deque(maxlen=50)
 
         if self.load_mdls:
             self._load_models(
@@ -314,36 +290,38 @@ class SAC:
             ep_ended = False
             ep_reward = 0
             ep_loss = 0
-            v_loss, c_loss, p_loss = 0, 0, 0
             ts = 0
             net_worth = 0
             profit = 0
             bal = 0
             units_held = 0
 
-            while not ep_ended and ts < 200:
+            while not ep_ended and ts <= 500:
                 action = self._get_action(state)
-                nxt_state, reward, ep_ended, _ = self.env.step(action)
+                nxt_state, reward, ep_ended, info = self.env.step(action)
+
                 ep_reward += reward
                 profit += info.get('profit')
                 bal += info.get('balance')
                 units_held += info.get('units_held')
                 net_worth += info.get('net_worth')
+
                 action = T(action, device=DEVICE)
                 reward = T(reward, device=DEVICE)
                 nxt_state = T(nxt_state, device=DEVICE)
                 ep_ended = T(ep_ended, device=DEVICE)
+
                 self.memory.add((state, action, reward, nxt_state, ep_ended))
                 state = nxt_state
-                if self.memory.curr_size > self.mem_sz:
-                    v_loss, c_loss, p_loss = self.train(ep_no)
-                    ep_loss += p_loss
 
+                if self.memory.curr_size > self.mem_sz:
+                    ep_loss += self.train(ep_no)
                     if ep_no % 100:
                         self._save_models()
                 ts += 1
+                self.curr_step += 1
 
-            if self.replay_memory.can_sample(self.batch_size):
+            if self.memory.curr_size > self.mem_sz:
                 ep_reward = round(ep_reward/ts, 2)
                 ep_loss = round(ep_loss, 2)
                 avg_p = round(profit/ts, 2)
@@ -381,8 +359,8 @@ class SAC:
             if ep_no == 0:
                 print('collecting experience...')
             if ep_no % self.log_freq == 0:
-                if self.replay_memory.can_sample(self.batch_size):
-                    print(f'\nEp: {ep_no} | L: {ep_loss} | R: {ep_reward} | R.Avg.R: {avg_reward} | P: {avg_p} | R.Avg P: {avg_profit} | B: {avg_b} | R.Avg B: {avg_bal} | R.N_Units: {avg_units_held}', end='')
+                if self.memory.curr_size > self.mem_sz:
+                    print(f'\nEp: {ep_no} | TS: {self.curr_step} | L: {ep_loss} | R: {ep_reward} | R.Avg.R: {avg_reward} | P: {avg_p} | R.Avg P: {avg_profit} | B: {avg_b} | R.Avg B: {avg_bal} | R.Avg.U: {avg_units_held}', end='')
                 else:
                     print(ep_no, end='..')
 

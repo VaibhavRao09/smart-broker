@@ -107,22 +107,25 @@ class SmartBrokerEnv(OpenAIEnv):
                 ptfo_ftrs,
             )
         )
-        
+
         return obs
-            
+
     def _act(self, action):
         # default to selling or buying all the stocks
-        if isinstance(action, list):
-            action_type = action[0]
-            amount = action[1]
+        if isinstance(action, list) or isinstance(action, np.ndarray):
+            action_type = abs(action[0])
+            amount = abs(action[1])
         else:
             action_type = action
             amount = 1
-            
+
         curr_price = self.df.iloc[self.curr_step][self.price_typ]
         units_bought = 0
         units_sold = 0
-        
+
+        if action_type < 1:
+            action_type = int(action_type * self.action_space.high[0])
+
         if action_type == Actions.Buy:
             total_possible = int(self.balance / curr_price)
             units_bought = int(total_possible * amount)
@@ -135,7 +138,7 @@ class SmartBrokerEnv(OpenAIEnv):
             self.units_held -= units_sold
 
         self.net_worth = self.balance + self.units_held * curr_price
-        
+
         info = {
             'amount': amount,
             'curr_step': self.curr_step,

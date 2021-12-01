@@ -13,16 +13,14 @@ class PolicyNetwork(BaseNetwork):
         state_dim,
         action_dim,
         eps,
-        max_act,
         hidden_layers=[64],
         sigma_min=-20,
         sigma_max=2,
     ):
         super().__init__()
+        self.eps = eps
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
-        self.eps = eps
-        self.max_act = T(max_act, device=self.device)
 
         self.fc1 = nn.Linear(state_dim, hidden_layers[0])
         self.fc2 = nn.Linear(hidden_layers[0], hidden_layers[0])
@@ -34,14 +32,14 @@ class PolicyNetwork(BaseNetwork):
         x = F.relu(self.fc2(x))
         x = self.out(x)
 
-        mu, sigma = torch.chunk(x, 2, dim=-1)
-        sigma = torch.clamp(
-            sigma,
+        mu, log_sigma = torch.chunk(x, 2, dim=-1)
+        log_sigma = torch.clamp(
+            log_sigma,
             min=self.sigma_min,
             max=self.sigma_max,
         )
 
-        return mu.to(self.device), sigma.to(self.device)
+        return mu.to(self.device), log_sigma.to(self.device)
 
     def sample(self, state, add_noise=True):
         mu, log_sigma = self.forward(state)
@@ -53,7 +51,7 @@ class PolicyNetwork(BaseNetwork):
         else:
             actions = probs.sample()
 
-        action = torch.tanh(actions) * self.max_act
+        action = torch.tanh(actions)
         log_probs = probs.log_prob(actions)
         log_probs -= torch.log(1 - action.pow(2) + self.eps)
         log_probs = log_probs.sum(-1, keepdim=True)
