@@ -16,6 +16,8 @@ class A2C:
         mdl_pth='../models/a2c',
         log_freq=100,
         hyprprms={},
+        p_net_type='nn',
+        c_net_type='nn',
     ):
         self.env = env
         self.actor = actor
@@ -29,6 +31,8 @@ class A2C:
         self.gamma = self.hyprprms.get('gamma', 0.95),
         self.step_sz = self.hyprprms.get('step_sz', 0.001)
         self.eval_ep = self.hyprprms.get('eval_ep', 50)
+        self.p_net_type = p_net_type
+        self.c_net_type = c_net_type
         self.logs = defaultdict(
             lambda: {
                 'reward': 0,
@@ -41,7 +45,13 @@ class A2C:
                 'avg_reward': 0,
             },
         )
-        
+
+        if self.p_net_type == 'lstm':
+            self.p_hdn_st = self.actor.init_states(1)
+
+        if self.c_net_type == 'lstm':
+            self.c_hdn_st = self.critic.init_states(1)
+
     @staticmethod
     def _normalise(arr):
         mean = arr.mean()
@@ -49,26 +59,25 @@ class A2C:
         arr -= mean
         arr /= (std + 1e-5)
         return arr
-        
-        
+
     def _get_returns(self, trmnl_state_val, rewards, gamma=1, normalise=True):
         R = trmnl_state_val
         returns = []
         for i in reversed(range(len(rewards))):
             R = rewards[i] + gamma * R 
             returns.append(R)
-    
+
         returns = returns[::-1]
         if normalise:
             return self._normalise(torch.cat(returns))
-            
+
         return FT(returns)
-    
+
     def _get_action(self, policy):
         actn = T(policy.sample().item())
         actn_log_prob = policy.log_prob(actn).unsqueeze(0)
         return actn, actn_log_prob
-        
+
     def train(self):
         exp = []
         state = self.env.reset()
@@ -83,9 +92,23 @@ class A2C:
         state = FT(state)
 
         while not ep_ended:
-            policy = self.actor(state)
+            if self.p_net_type == 'lstm':
+                policy, self.p_hdn_st = self.actor.forward(
+                    state,
+                    self.p_hdn_st,
+                )
+            else:
+                policy = self.actor(state)
+
             actn, actn_log_prob = self._get_action(policy)
-            state_val = self.critic(state)
+
+            if self.c_net_type == 'lstm':
+                state_val, self.c_hdn_st = self.critic.forward(
+                    state,
+                    self.c_hdn_st,
+                )
+            else:
+                state_val = self.critic(state)
 
             nxt_state, reward, ep_ended, info = self.env.step(action=actn.item())
             nxt_state = FT(nxt_state)
@@ -101,18 +124,37 @@ class A2C:
         states, state_vals, rewards, actn_log_probs = zip(*exp)
         actn_log_probs = torch.cat(actn_log_probs)
         state_vals = torch.cat(state_vals)
-        trmnl_state_val = self.critic(state).item()
+
+        if self.c_net_type == 'lstm':
+            trmnl_state_val, self.c_hdn_st = self.critic.forward(
+                state,
+                self.c_hdn_st,
+            )
+        else:
+            trmnl_state_val = self.critic(state)
+
+        trmnl_state_val = trmnl_state_val.item()
         returns = self._get_returns(trmnl_state_val, rewards).detach()
-        
         adv = returns - state_vals
         actn_log_probs = actn_log_probs
         actor_loss = (-1.0 * actn_log_probs * adv.detach()).mean()
         critic_loss = adv.pow(2).mean()
         net_loss = (actor_loss + critic_loss).mean()
 
+        # disable computing gradients
+        if self.p_net_type == 'lstm':
+            self.p_hdn_st = tuple([each.data for each in self.p_hdn_st])
+        if self.c_net_type == 'lstm':
+            self.c_hdn_st = tuple([each.data for each in self.c_hdn_st])
+
         self.actor_optmz.zero_grad()
         self.critic_optmz.zero_grad()
-        actor_loss.backward()
+
+        if self.p_net_type == 'lstm':
+            actor_loss.backward(retain_graph=True)
+        else:
+            actor_loss.backward()
+
         critic_loss.backward()
         self.actor_optmz.step()
         self.critic_optmz.step()

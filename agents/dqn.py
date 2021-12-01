@@ -189,7 +189,7 @@ class DQN:
         goal_achieved = torch.from_numpy(np.array([goal_achieved])).view(-1, 1).float()
 
         if self.network_type == 'lstm':
-            Q_values, _ = self.policy_net(
+            Q_values, self.train_hdn_st = self.policy_net(
                 states,
                 self.train_hdn_st,
             )
@@ -198,7 +198,7 @@ class DQN:
 
         predictions = Q_values.gather(1, actions)
         if self.network_type == 'lstm':
-            actions, _ = self.target_net(
+            actions, self.train_tgt_hdn_st = self.target_net(
                 next_states,
                 self.train_tgt_hdn_st,
             )
@@ -212,11 +212,18 @@ class DQN:
                 dim=1,
             ).values.view(-1, 1).detach()
 
+        if self.network_type == 'lstm':
+            self.train_hdn_st = tuple([each.data for each in self.train_hdn_st])
+
         labels = rewards + (self.gamma * labels_next * (1 - goal_achieved))
 
         loss = self.loss_func(predictions, labels)
         self.optimizer.zero_grad()
-        loss.backward(retain_graph=True)
+
+        if self.network_type == 'lstm':
+            loss.backward(retain_graph=True)
+        else:
+            loss.backward()
 
         for param in self.policy_net.parameters():
             param.grad.data.clamp_(-1, 1)

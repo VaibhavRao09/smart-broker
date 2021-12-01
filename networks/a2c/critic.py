@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions import Categorical
+
 
 class Critic(nn.Module):
     def __init__(self, state_dim):
