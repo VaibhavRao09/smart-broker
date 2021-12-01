@@ -53,7 +53,7 @@ class SmartBrokerEnv(OpenAIEnv):
         self.market = self.portfolio.get('market', 'USD')
         self.duration_typ = self.portfolio.get('duration_typ', 'minute')
         self.price_typ = self.portfolio.get('price_typ', 'close')
-        self.roll_period = self.portfolio.get('roll_period', 15)
+        self.roll_period = self.portfolio.get('roll_period', 30)
         self.units_held = 0
         self.net_worth = self.balance
 
@@ -160,7 +160,7 @@ class SmartBrokerEnv(OpenAIEnv):
         self.curr_step += 1
 
         alpha = self.curr_step / MAX_STEPS
-        reward = - self.net_worth * alpha
+        reward = (self.net_worth * alpha)/self.init_balance
         info['reward'] = reward
         done = self.net_worth <= 0 or self.curr_step == MAX_STEPS
         obs = self._get_obs()

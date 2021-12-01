@@ -313,13 +313,22 @@ class SAC:
             state = T(state, device=DEVICE)
             ep_ended = False
             ep_reward = 0
+            ep_loss = 0
             v_loss, c_loss, p_loss = 0, 0, 0
             ts = 0
+            net_worth = 0
+            profit = 0
+            bal = 0
+            units_held = 0
 
             while not ep_ended and ts < 200:
                 action = self._get_action(state)
                 nxt_state, reward, ep_ended, _ = self.env.step(action)
                 ep_reward += reward
+                profit += info.get('profit')
+                bal += info.get('balance')
+                units_held += info.get('units_held')
+                net_worth += info.get('net_worth')
                 action = T(action, device=DEVICE)
                 reward = T(reward, device=DEVICE)
                 nxt_state = T(nxt_state, device=DEVICE)
@@ -328,19 +337,52 @@ class SAC:
                 state = nxt_state
                 if self.memory.curr_size > self.mem_sz:
                     v_loss, c_loss, p_loss = self.train(ep_no)
+                    ep_loss += p_loss
 
                     if ep_no % 100:
                         self._save_models()
                 ts += 1
 
-            rewards.append(ep_reward)
-            avg_reward = np.mean(rewards[-50:])
-            self.logs[ep_no]['reward'] = ep_reward
-            self.logs[ep_no]['avg_reward'] = avg_reward
+            if self.replay_memory.can_sample(self.batch_size):
+                ep_reward = round(ep_reward/ts, 2)
+                ep_loss = round(ep_loss, 2)
+                avg_p = round(profit/ts, 2)
+                avg_b = round(bal/ts, 2)
+                avg_u_h = int(units_held/ts)
 
+                losses.append(ep_loss)
+                avg_loss = round(np.mean(losses), 2)
+
+                rewards.append(ep_reward)
+                avg_reward = round(np.mean(rewards), 2)
+
+                bals.append(avg_b)
+                avg_bal = round(np.mean(bals), 2)
+
+                profits.append(avg_p)
+                avg_profit = round(np.mean(profits), 2)
+
+                units_held_l.append(avg_u_h)
+                avg_units_held = int(np.mean(units_held_l))
+
+                net_worth_l.append(net_worth)
+                avg_net_worth = round(np.mean(net_worth_l), 2)
+
+                # save logs for analysis
+                rewards.append(ep_reward)
+                self.logs[ep_no]['reward'] = ep_reward
+                self.logs[ep_no]['r_avg_reward'] = avg_reward
+                self.logs[ep_no]['r_avg_loss'] = avg_loss
+                self.logs[ep_no]['r_avg_net_worth'] = avg_net_worth
+                self.logs[ep_no]['r_avg_profit'] = avg_profit
+                self.logs[ep_no]['r_avg_bal'] = avg_bal
+                self.logs[ep_no]['r_avg_units_held'] = avg_units_held
+
+            if ep_no == 0:
+                print('collecting experience...')
             if ep_no % self.log_freq == 0:
-                if self.memory.curr_size > self.mem_sz:
-                    print(f'Episode: {ep_no}, Reward: {ep_reward}, Avg. Reward: {avg_reward}, Policy Loss={round(float(p_loss), 2)}')
+                if self.replay_memory.can_sample(self.batch_size):
+                    print(f'\nEp: {ep_no} | L: {ep_loss} | R: {ep_reward} | R.Avg.R: {avg_reward} | P: {avg_p} | R.Avg P: {avg_profit} | B: {avg_b} | R.Avg B: {avg_bal} | R.N_Units: {avg_units_held}', end='')
                 else:
                     print(ep_no, end='..')
 

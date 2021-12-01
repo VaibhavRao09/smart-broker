@@ -8,7 +8,7 @@ class LSTMDueling(nn.Module):
         self,
         input_dim,
         output_dim,
-        hidden_dim=10,
+        hidden_dim=20,
         n_layers=4,
         dueling_type='mean',
     ):

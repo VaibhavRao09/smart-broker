@@ -62,6 +62,7 @@ class DQN:
         train_freq=5,
         w_sync_freq=5,
         batch_size=10,
+        roll_n=20,
         memory_size=5000,
         gamma=0.95,
         step_size=0.001,
@@ -78,6 +79,7 @@ class DQN:
         self.env_type = env_type
         self.n_actions = n_actions
         self.actions = range(n_actions)
+        self.roll_n = roll_n
         self.gamma = np.float64(gamma)
         self.model_path = model_path
         self.policy_net = policy_net
@@ -244,12 +246,12 @@ class DQN:
             ep = self.episodes
 
         epsilon = self.epsilon_start
-        rewards = deque(maxlen=50)
-        profits = deque(maxlen=50)
-        bals = deque(maxlen=50)
-        units_held_l = deque(maxlen=50)
-        losses = deque(maxlen=50)
-        net_worth_l = deque(maxlen=50)
+        rewards = deque(maxlen=self.roll_n)
+        profits = deque(maxlen=self.roll_n)
+        bals = deque(maxlen=self.roll_n)
+        units_held_l = deque(maxlen=self.roll_n)
+        losses = deque(maxlen=self.roll_n)
+        net_worth_l = deque(maxlen=self.roll_n)
 
         for ep_no in range(ep):
             ep_ended = False
@@ -326,7 +328,7 @@ class DQN:
                 print('collecting experience...')
             if ep_no % self.log_freq == 0:
                 if self.replay_memory.can_sample(self.batch_size):
-                    print(f'\nEp: {ep_no} | L: {ep_loss} | R: {ep_reward} | R.Avg.R: {avg_reward} | P: {avg_p} | R.Avg P: {avg_profit} | B: {avg_b} | R.Avg B: {avg_bal} | R.N_Units: {avg_units_held}', end='')
+                    print(f'\nEp: {ep_no} | L: {ep_loss} | R: {ep_reward} | R.Avg.R: {avg_reward} | P: {avg_p} | R.Avg P: {avg_profit} | NW: {net_worth} | R.Avg NW: {avg_net_worth} | R.N_Units: {avg_units_held}', end='')
                 else:
                     print(ep_no, end='..')
 

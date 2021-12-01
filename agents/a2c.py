@@ -195,6 +195,7 @@ class A2C:
             ep_reward = round(ep_reward, 2)
             profit = round(profit, 2)
             bal = round(bal, 2)
+            net_worth = round(net_worth, 2)
 
             losses.append(ep_loss)
             avg_loss = round(np.mean(losses), 2)
@@ -203,10 +204,10 @@ class A2C:
             avg_reward = round(np.mean(rewards), 2)
 
             bals.append(bal)
-            avg_bal = int(np.mean(bals))
+            avg_bal = round(np.mean(bals), 2)
 
             profits.append(profit)
-            avg_profit = int(np.mean(profits))
+            avg_profit = round(np.mean(profits), 2)
 
             units_held_l.append(units_held)
             avg_units_held = int(np.mean(units_held_l))
@@ -225,5 +226,5 @@ class A2C:
             self.logs[ep_no]['r_avg_units_held'] = avg_units_held
 
             if ep_no % self.log_freq == 0:
-                print(f'\nEp: {ep_no} | L: {ep_loss} | R: {ep_reward} | R.Avg.R: {avg_reward} | P: {profit} | R.Avg P: {avg_profit} | B: {bal} | R.Avg B: {avg_bal} | R.N_Units: {avg_units_held}', end='')
+                print(f'\nEp: {ep_no} | L: {ep_loss} | R: {ep_reward} | P: {profit} | R.Avg P: {avg_profit} | NW: {net_worth} | R.Avg NW: {avg_net_worth} | R.U: {avg_units_held}', end='')
                 
