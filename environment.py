@@ -56,14 +56,14 @@ class SmartBrokerEnv(OpenAIEnv):
         self.roll_period = self.portfolio.get('roll_period', 15)
         self.units_held = 0
         self.net_worth = self.balance
-        
+
         if load_df:
             file = f'{self.source}_{self.entity}{self.market}_{self.year}_{self.duration_typ}.csv'
             df = pd.read_csv(f'{self.data_dir}/{file}', skiprows=1, parse_dates=True)
             df = df[self.df_info.get('cols')]
             # process and initialise dataframe
             self._process_df(df)
-        
+
     def _process_df(self, df):
         start_dt = self.df_info.get('start_date')
         end_dt = self.df_info.get('end_date')

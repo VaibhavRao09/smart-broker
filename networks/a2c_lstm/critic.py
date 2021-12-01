@@ -19,8 +19,8 @@ class CriticLSTM(nn.Module):
             dropout=0.2,
             batch_first=True,
         )
-        self.fc1 = nn.Linear(hidden_dim, 64)
-        self.out = nn.Linear(64, 1)
+        self.fc1 = nn.Linear(hidden_dim, 128)
+        self.out = nn.Linear(128, 1)
 
     def forward(self, x, prev_state):
         x = x.view(1, 1, self.input_dim)
