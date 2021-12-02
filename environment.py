@@ -25,6 +25,7 @@ class SmartBrokerEnv(OpenAIEnv):
         data_dir='../data',
     ):
         self.df_info = df_info
+        self.reward_range = (0, MAX_INT)
         self.batch_dur = batch_dur
         self.df_info = df_info
         self.portfolio = portfolio
@@ -187,3 +188,6 @@ class SmartBrokerEnv(OpenAIEnv):
         print(f'net_worth: {self.net_worth}')
         print(f'units_held: {self.units_held}')
         print(f'net_profit: {self.net_worth - self.init_balance}')
+
+    def close(self):
+        print('close')
