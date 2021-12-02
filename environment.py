@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 MAX_INT = 2147483647
-MAX_STEPS = 1000
+MAX_STEPS = 20000
 
 
 class Actions:
@@ -122,6 +122,7 @@ class SmartBrokerEnv(OpenAIEnv):
         curr_price = self.df.iloc[self.curr_step][self.price_typ]
         units_bought = 0
         units_sold = 0
+        alpha = self.curr_step / MAX_STEPS
 
         if action_type < 1:
             action_type = int(action_type * self.action_space.high[0])
@@ -139,8 +140,18 @@ class SmartBrokerEnv(OpenAIEnv):
 
         self.net_worth = self.balance + self.units_held * curr_price
 
+        if action_type == Actions.Buy and total_possible == 0:
+            reward = -5
+        elif action_type == Actions.Sell and units_sold == 0:
+            reward = -5
+        elif action_type == Actions.Hold:
+            reward = -50 + ((self.net_worth * alpha) / self.init_balance)
+        else:
+            reward = (self.net_worth * alpha) / self.init_balance
+
         info = {
             'amount': amount,
+            'reward': reward,
             'curr_step': self.curr_step,
             'units_bought': units_bought,
             'units_sold': units_sold,
@@ -149,22 +160,19 @@ class SmartBrokerEnv(OpenAIEnv):
             'units_held': self.units_held,
             'profit': self.net_worth - self.init_balance,
         }
-        
+
         return info
-        
+
     def reset(self):
         self._init_portfolio()
         self.curr_step = self.roll_period
         obs = self._get_obs()
         return obs
-    
+
     def step(self, action):
         info = self._act(action)
         self.curr_step += 1
-
-        alpha = self.curr_step / MAX_STEPS
-        reward = (self.net_worth * alpha)/self.init_balance
-        info['reward'] = reward
+        reward = info['reward']
         done = self.net_worth <= 0 or self.curr_step == MAX_STEPS
         obs = self._get_obs()
 

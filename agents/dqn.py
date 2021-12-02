@@ -294,6 +294,7 @@ class DQN:
                 ep_loss = round(ep_loss, 3)
                 avg_p = round(profit/timestep, 2)
                 avg_b = round(bal/timestep, 2)
+                net_worth = round(net_worth/timestep, 2)
                 avg_u_h = int(units_held/timestep)
 
                 losses.append(ep_loss)

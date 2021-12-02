@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from torch import FloatTensor as FT, tensor as T
 
+
 class A2C:
     def __init__(
         self,
@@ -13,11 +14,12 @@ class A2C:
         n_actns, 
         actor_optmz, 
         critic_optmz,
-        mdl_pth='../models/a2c',
+        mdl_pth,
         log_freq=100,
         hyprprms={},
         p_net_type='nn',
         c_net_type='nn',
+        load_models=False,
     ):
         self.env = env
         self.actor = actor
@@ -45,12 +47,17 @@ class A2C:
                 'avg_reward': 0,
             },
         )
+        self.load_models = load_models
 
         if self.p_net_type == 'lstm':
             self.p_hdn_st = self.actor.init_states(1)
 
         if self.c_net_type == 'lstm':
             self.c_hdn_st = self.critic.init_states(1)
+
+        if self.load_models:
+            self.actor.load_state_dict(torch.load(f'{mdl_pth}/actor'))
+            self.critic.load_state_dict(torch.load(f'{mdl_pth}/critic'))
 
     @staticmethod
     def _normalise(arr):
@@ -164,6 +171,12 @@ class A2C:
     def evaluate(self, ep=None):
         if not ep:
             ep = self.eval_ep
+        rewards = deque(maxlen=5)
+        profits = deque(maxlen=5)
+        bals = deque(maxlen=5)
+        units_held_l = deque(maxlen=5)
+        losses = deque(maxlen=5)
+        net_worth_l = deque(maxlen=5)
 
         for ep_no in range(ep):
             state = self.env.reset()
@@ -171,15 +184,65 @@ class A2C:
             ep_ended = False
             ep_reward = 0
             ts = 0
+            ep_loss = 0
+            net_worth = 0
+            profit = 0
+            bal = 0
+            units_held = 0
+            ip_state = self.actor.init_states(1)
 
             while not ep_ended and ts < 200:
-                policy = self.actor(state)
-                actn, actn_log_prob = self._get_action(policy)
-                nxt_state, reward, ep_ended, _ = self.env.step(actn.item())
-                ep_reward += reward
-                state = FT(nxt_state)
+                if self.p_net_type == 'lstm':
+                    policy, ip_state = self.actor.forward(
+                        state,
+                        ip_state,
+                    )
+                else:
+                    policy = self.actor(state)
 
+                actn, actn_log_prob = self._get_action(policy)
+                nxt_state, reward, ep_ended, info = self.env.step(actn.item())
+                ep_reward += info.get('reward')
+                profit += info.get('profit')
+                bal += info.get('balance')
+                units_held += info.get('units_held')
+                net_worth += info.get('net_worth')
+                state = FT(nxt_state)
+                ts += 1
+
+            ep_loss = round(ep_loss, 3)
+            ep_reward = round(ep_reward/ts, 2)
+            profit = round(profit/ts, 2)
+            bal = round(bal/ts, 2)
+            net_worth = round(net_worth/ts, 2)
+
+            losses.append(ep_loss)
+            avg_loss = round(np.mean(losses), 2)
+
+            rewards.append(ep_reward)
+            avg_reward = round(np.mean(rewards), 2)
+
+            bals.append(bal)
+            avg_bal = round(np.mean(bals), 2)
+
+            profits.append(profit)
+            avg_profit = round(np.mean(profits), 2)
+
+            units_held_l.append(units_held/ts)
+            avg_units_held = int(np.mean(units_held_l))
+
+            net_worth_l.append(net_worth)
+            avg_net_worth = round(np.mean(net_worth_l), 2)
+
+            # save logs for analysis
+            rewards.append(ep_reward)
             self.eval_logs[ep_no]['reward'] = ep_reward
+            self.eval_logs[ep_no]['r_avg_reward'] = avg_reward
+            self.eval_logs[ep_no]['r_avg_loss'] = avg_loss
+            self.eval_logs[ep_no]['r_avg_net_worth'] = avg_net_worth
+            self.eval_logs[ep_no]['r_avg_profit'] = avg_profit
+            self.eval_logs[ep_no]['r_avg_bal'] = avg_bal
+            self.eval_logs[ep_no]['r_avg_units_held'] = avg_units_held
 
     def run(self, ep=1000):
         rewards = deque(maxlen=50)

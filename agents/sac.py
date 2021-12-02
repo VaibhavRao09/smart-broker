@@ -278,6 +278,7 @@ class SAC:
             state = T(state, dtype=torch.float, device=DEVICE)
             ep_ended = False
             ep_reward = 0
+            ep_loss = 0
             ts = 0
             net_worth = 0
             profit = 0
@@ -287,15 +288,47 @@ class SAC:
             while not ep_ended:
                 action = self._get_action(state)
                 nxt_state, reward, ep_ended, info = self.env.step(action)
-                ep_reward += reward
-                nxt_state = T(nxt_state, device=DEVICE)
-                ts += 1
+                ep_reward += info.get('reward')
                 profit += info.get('profit')
                 bal += info.get('balance')
                 units_held += info.get('units_held')
                 net_worth += info.get('net_worth')
+                nxt_state = T(nxt_state, device=DEVICE)
+                ts += 1
 
+            ep_loss = round(ep_loss, 3)
+            ep_reward = round(ep_reward/ts, 2)
+            profit = round(profit/ts, 2)
+            bal = round(bal/ts, 2)
+            net_worth = round(net_worth/ts, 2)
+
+            losses.append(ep_loss)
+            avg_loss = round(np.mean(losses), 2)
+
+            rewards.append(ep_reward)
+            avg_reward = round(np.mean(rewards), 2)
+
+            bals.append(bal)
+            avg_bal = round(np.mean(bals), 2)
+
+            profits.append(profit)
+            avg_profit = round(np.mean(profits), 2)
+
+            units_held_l.append(units_held/ts)
+            avg_units_held = int(np.mean(units_held_l))
+
+            net_worth_l.append(net_worth)
+            avg_net_worth = round(np.mean(net_worth_l), 2)
+
+            # save logs for analysis
+            rewards.append(ep_reward)
             self.eval_logs[ep_no]['reward'] = ep_reward
+            self.eval_logs[ep_no]['r_avg_reward'] = avg_reward
+            self.eval_logs[ep_no]['r_avg_loss'] = avg_loss
+            self.eval_logs[ep_no]['r_avg_net_worth'] = avg_net_worth
+            self.eval_logs[ep_no]['r_avg_profit'] = avg_profit
+            self.eval_logs[ep_no]['r_avg_bal'] = avg_bal
+            self.eval_logs[ep_no]['r_avg_units_held'] = avg_units_held
 
     def run(self, ep=1000):
         rewards = deque(maxlen=50)
