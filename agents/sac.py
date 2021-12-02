@@ -285,8 +285,10 @@ class SAC:
             bal = 0
             units_held = 0
 
-            while not ep_ended:
+            while not ep_ended and ts <= 500:
                 action = self._get_action(state)
+                if self.p_net_type == 'lstm':
+                    action = action[0]
                 nxt_state, reward, ep_ended, info = self.env.step(action)
                 ep_reward += info.get('reward')
                 profit += info.get('profit')
@@ -359,7 +361,7 @@ class SAC:
             bal = 0
             units_held = 0
 
-            while not ep_ended and ts <= 500:
+            while not ep_ended:
                 action = self._get_action(state)
                 if self.p_net_type == 'lstm':
                     action = action[0]

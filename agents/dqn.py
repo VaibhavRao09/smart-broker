@@ -108,6 +108,7 @@ class DQN:
         self.log_freq = log_freq
         self.batch_no = 0
         self.load_pretrained = load_pretrained
+        self.curr_step = 0
 
         # initialize action-value function
         self.Q = defaultdict(
@@ -288,6 +289,7 @@ class DQN:
 
                 timestep += 1
                 state = next_state
+                self.curr_step += 1
 
             if self.replay_memory.can_sample(self.batch_size):
                 ep_reward = round(ep_reward/timestep, 2)
@@ -329,7 +331,7 @@ class DQN:
                 print('collecting experience...')
             if ep_no % self.log_freq == 0:
                 if self.replay_memory.can_sample(self.batch_size):
-                    print(f'\nEp: {ep_no} | L: {ep_loss} | R: {ep_reward} | P: {avg_p} | R.Avg P: {avg_profit} | NW: {net_worth} | R.Avg NW: {avg_net_worth} | R.U: {avg_units_held}', end='')
+                    print(f'\nEp: {ep_no} | TS: {self.curr_step} | L: {ep_loss} | R: {ep_reward} | P: {avg_p} | R.Avg P: {avg_profit} | NW: {net_worth} | R.Avg NW: {avg_net_worth} | R.U: {avg_units_held}', end='')
                 else:
                     print(ep_no, end='..')
 
@@ -372,7 +374,7 @@ class DQN:
         net_worth_l = deque(maxlen=5)
 
         for ep_no in range(self.eval_episodes):
-            ep_reward, profit, bal, units_held, net_worth, ts = self.evaluate_one_episode(n, policy)
+            ep_reward, profit, bal, units_held, net_worth, ts = self.evaluate_one_episode(ep_no, policy)
             ep_loss = round(0, 3)
             ep_reward = round(ep_reward/ts, 2)
             profit = round(profit/ts, 2)

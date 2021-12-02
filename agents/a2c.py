@@ -48,6 +48,7 @@ class A2C:
             },
         )
         self.load_models = load_models
+        self.curr_step = 0
 
         if self.p_net_type == 'lstm':
             self.p_hdn_st = self.actor.init_states(1)
@@ -127,6 +128,7 @@ class A2C:
             net_worth += info.get('net_worth')
             state = nxt_state
             ts += 1
+            self.curr_step += 1
 
         states, state_vals, rewards, actn_log_probs = zip(*exp)
         actn_log_probs = torch.cat(actn_log_probs)
@@ -189,7 +191,9 @@ class A2C:
             profit = 0
             bal = 0
             units_held = 0
-            ip_state = self.actor.init_states(1)
+
+            if self.p_net_type == 'lstm':
+                ip_state = self.actor.init_states(1)
 
             while not ep_ended and ts < 200:
                 if self.p_net_type == 'lstm':
@@ -289,5 +293,5 @@ class A2C:
             self.logs[ep_no]['r_avg_units_held'] = avg_units_held
 
             if ep_no % self.log_freq == 0:
-                print(f'\nEp: {ep_no} | L: {ep_loss} | R: {ep_reward} | P: {profit} | R.Avg P: {avg_profit} | NW: {net_worth} | R.Avg NW: {avg_net_worth} | R.U: {avg_units_held}', end='')
+                print(f'\nEp: {ep_no} | TS: {self.curr_step} | L: {ep_loss} | R: {ep_reward} | P: {profit} | R.Avg P: {avg_profit} | NW: {net_worth} | R.Avg NW: {avg_net_worth} | R.U: {avg_units_held}', end='')
                 
