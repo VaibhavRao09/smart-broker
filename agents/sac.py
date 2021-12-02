@@ -2,19 +2,18 @@ from collections import defaultdict, deque
 import numpy as np
 from pathlib import Path
 import torch
-import torch.nn.functional as F
 from torch import tensor as T
 from torch.optim import Adam
 
 from networks.sac.continuous.policy_net import PolicyNetwork
 from networks.sac.continuous.q_net import QNetwork
-from networks.sac.continuous.value_net import ValueNetwork
 from helpers.replay_buffer import ReplayBuffer
 
 
 DEVICE = torch.device(
     'cuda' if torch.cuda.is_available() else 'cpu'
 )
+
 
 class SAC:
     def __init__(
@@ -28,9 +27,11 @@ class SAC:
         hyprprms={},
         save_mdls=True,
         load_mdls=False,
+        p_net_type='nn',
     ):
         self.env = env
         self.env_name = name
+        self.p_net_type = p_net_type
         self.input_dim = input_dim
         self.action_space = env.action_space
         self.hyprprms = hyprprms
@@ -43,6 +44,7 @@ class SAC:
         self.critic_sync_f = self.hyprprms.get('critic_sync_f', 5)
         self.tau = self.hyprprms.get('tau', 0.005)
         self.alpha = self.hyprprms.get('alpha', 0.2)
+        self.batch_size = self.hyprprms.get('batch_size', self.mem_sz//10)
         self.save_mdls = save_mdls
         self.load_mdls = load_mdls
         self.memory = ReplayBuffer(self.mem_sz)
@@ -123,9 +125,16 @@ class SAC:
             },
         )
 
-    def _get_action(self, state):
+        if self.p_net_type == 'lstm':
+            self.p_hdn_st = self.policy.init_states(1)
+
+    def _get_action(self, state, add_noise=True):
         state = torch.cat([state]).float()
-        actions, _ = self.policy.sample(state, add_noise=False)
+        if self.p_net_type == 'lstm':
+            actions, _, self.p_hdn_st = self.policy.sample(state, self.p_hdn_st, add_noise)
+        else:
+            actions, _ = self.policy.sample(state, add_noise)
+
         return actions.cpu().detach().numpy()
 
     def _sync_weights(self, src, tgt):
@@ -139,7 +148,10 @@ class SAC:
 
     def _get_target_q(self, states, actions, rewards, nxt_states, dones):
         with torch.no_grad():
-            nxt_actions, log_probs = self.policy.sample(nxt_states)
+            if self.p_net_type == 'lstm':
+                nxt_actions, log_probs, self.p_hdn_st = self.policy.sample(nxt_states, self.p_hdn_st)
+            else:
+                nxt_actions, log_probs = self.policy.sample(nxt_states)
             nxt_q1 = self.tgt_critic_a(nxt_states, nxt_actions)
             nxt_q2 = self.tgt_critic_b(nxt_states, nxt_actions)
             nxt_q = torch.min(nxt_q1, nxt_q2) - self.alpha * log_probs
@@ -208,7 +220,10 @@ class SAC:
         self.critic_b_optmz.step()
 
     def _train_policy_net(self, states):
-        actions, entropy = self.policy.sample(states, add_noise=True)
+        if self.p_net_type == 'lstm':
+            actions, entropy, self.p_hdn_st = self.policy.sample(states, self.p_hdn_st)
+        else:
+            actions, entropy = self.policy.sample(states)
         entropy = entropy.view(-1)
 
         pred_q1 = self.critic_a.forward(states, actions)
@@ -224,7 +239,7 @@ class SAC:
 
     def train(self, ep_no):
         states, actions, rewards, nxt_states, dones = \
-            self.memory.sample(self.mem_sz)
+            self.memory.sample(self.batch_size)
 
         rewards = rewards.float().to(DEVICE)
         dones = dones.float().to(DEVICE)
@@ -248,6 +263,13 @@ class SAC:
         return policy_loss
 
     def evaluate(self, ep=None):
+        rewards = deque(maxlen=50)
+        profits = deque(maxlen=50)
+        bals = deque(maxlen=50)
+        units_held_l = deque(maxlen=50)
+        losses = deque(maxlen=50)
+        net_worth_l = deque(maxlen=50)
+
         if not ep:
             ep = self.eval_ep
 
@@ -257,13 +279,21 @@ class SAC:
             ep_ended = False
             ep_reward = 0
             ts = 0
+            net_worth = 0
+            profit = 0
+            bal = 0
+            units_held = 0
 
-            while not ep_ended and ts < 600:
+            while not ep_ended:
                 action = self._get_action(state)
-                nxt_state, reward, ep_ended, _ = self.env.step(action)
+                nxt_state, reward, ep_ended, info = self.env.step(action)
                 ep_reward += reward
                 nxt_state = T(nxt_state, device=DEVICE)
                 ts += 1
+                profit += info.get('profit')
+                bal += info.get('balance')
+                units_held += info.get('units_held')
+                net_worth += info.get('net_worth')
 
             self.eval_logs[ep_no]['reward'] = ep_reward
 
@@ -298,6 +328,8 @@ class SAC:
 
             while not ep_ended and ts <= 500:
                 action = self._get_action(state)
+                if self.p_net_type == 'lstm':
+                    action = action[0]
                 nxt_state, reward, ep_ended, info = self.env.step(action)
 
                 ep_reward += reward

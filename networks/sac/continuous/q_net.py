@@ -11,7 +11,7 @@ class QNetwork(BaseNetwork):
         state_dim,
         action_dim,
         op_dim=1,
-        hidden_layers=[64],
+        hidden_layers=[128],
     ):
         super().__init__()
         self.fc1 = nn.Linear(state_dim + action_dim, hidden_layers[0])

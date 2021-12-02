@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 MAX_INT = 2147483647
-MAX_STEPS = 500
+MAX_STEPS = 1000
 
 
 class Actions:
@@ -43,7 +43,7 @@ class SmartBrokerEnv(OpenAIEnv):
             shape=(self.batch_dur*3 + 3, 1),
             dtype=np.uint8,
         )
-        
+
     def _init_portfolio(self, load_df=False):
         self.source = self.portfolio.get('source', 'Bitstamp')
         self.init_balance = self.portfolio.get('init_balance', 100)
