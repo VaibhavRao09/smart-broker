@@ -1,6 +1,7 @@
 from collections import defaultdict, deque
 import os
 
+from scipy import stats
 import numpy as np
 import torch
 
@@ -339,75 +340,68 @@ class DQN:
         if self.save_pretrained:
             self.save_models()
 
-    def evaluate_one_episode(self, e_num=None, policy=None):
-        done = False
-        state = self.env.reset()
-        ep_reward = 0
-        ts = 0
-        ep_loss = 0
-        net_worth = 0
-        profit = 0
-        bal = 0
-        units_held = 0
+    def evaluate(self, start_dt, duration):
+        idx = self.env.df.loc[self.env.df['date'] == start_dt].index[0]
+        rewards = deque(maxlen=duration)
+        profits = deque(maxlen=duration)
+        bals = deque(maxlen=duration)
+        units_held_l = deque(maxlen=duration)
+        losses = deque(maxlen=duration)
+        net_worth_l = deque(maxlen=duration)
+        buy_steps = []
+        sell_steps = []
+        buy_prices = []
+        sell_prices = []
+        state = self.env.reset(idx)
 
-        while not done and ts < 1000:
+        for _ in range(duration):
             action, action_idx = self._get_action(state, 0)
-            state, reward, done, info = self.env.step(
-                action=[action, 1],
-            )
-            print(info)
-            ep_reward += info.get('reward')
-            profit += info.get('profit')
-            bal += info.get('balance')
-            units_held += info.get('units_held')
-            net_worth += info.get('net_worth')
-            ts += 1
+            nxt_state, reward, ep_ended, info = self.env.step([action, 1])
+            ep_reward = info.get('reward')
+            profit = info.get('profit')
+            bal = info.get('balance')
+            units_held = info.get('units_held')
+            net_worth = info.get('net_worth')
+            curr_step = info.get('curr_step')
+            curr_price = info.get('curr_price')
+            units_bought = info.get('units_bought')
+            units_sold = info.get('units_sold')
 
-        return ep_reward/ts, profit/ts, bal/ts, units_held/ts, net_worth/ts, ts
+            if units_bought != 0:
+                buy_prices.append(curr_price)
+                buy_steps.append(curr_step)
+            elif units_sold != 0:
+                sell_prices.append(curr_price)
+                sell_steps.append(curr_step)
 
-    def evaluate(self, policy=None):
-        rewards = deque(maxlen=5)
-        profits = deque(maxlen=5)
-        bals = deque(maxlen=5)
-        units_held_l = deque(maxlen=5)
-        losses = deque(maxlen=5)
-        net_worth_l = deque(maxlen=5)
-
-        for ep_no in range(self.eval_episodes):
-            ep_reward, profit, bal, units_held, net_worth, ts = self.evaluate_one_episode(ep_no, policy)
-            ep_loss = round(0, 3)
-            ep_reward = round(ep_reward/ts, 2)
-            profit = round(profit/ts, 2)
-            bal = round(bal/ts, 2)
-            net_worth = round(net_worth/ts, 2)
-
-            losses.append(ep_loss)
-            avg_loss = round(np.mean(losses), 2)
+            ep_reward = round(ep_reward, 2)
+            profit = round(profit, 2)
+            bal = round(bal, 2)
+            net_worth = round(net_worth, 2)
 
             rewards.append(ep_reward)
-            avg_reward = round(np.mean(rewards), 2)
-
             bals.append(bal)
-            avg_bal = round(np.mean(bals), 2)
-
             profits.append(profit)
-            avg_profit = round(np.mean(profits), 2)
-
-            units_held_l.append(units_held/ts)
-            avg_units_held = int(np.mean(units_held_l))
-
+            units_held_l.append(units_held)
             net_worth_l.append(net_worth)
-            avg_net_worth = round(np.mean(net_worth_l), 2)
 
-            # save logs for analysis
-            rewards.append(ep_reward)
-            self.eval_logs[ep_no]['reward'] = ep_reward
-            self.eval_logs[ep_no]['r_avg_reward'] = avg_reward
-            self.eval_logs[ep_no]['r_avg_loss'] = avg_loss
-            self.eval_logs[ep_no]['r_avg_net_worth'] = avg_net_worth
-            self.eval_logs[ep_no]['r_avg_profit'] = avg_profit
-            self.eval_logs[ep_no]['r_avg_bal'] = avg_bal
-            self.eval_logs[ep_no]['r_avg_units_held'] = avg_units_held
+        avg_net_worth = round(np.mean(net_worth_l), 2)
+        avg_units_held = int(np.mean(units_held_l))
+        avg_profit = round(np.mean(profits), 2)
+        avg_bal = round(np.mean(bals), 2)
+        max_reward = round(stats.mode(rewards)[0][0], 2)
+        avg_loss = round(np.mean(losses), 2)
+
+        self.eval_logs['reward'] = ep_reward
+        self.eval_logs['r_avg_loss'] = avg_loss
+        self.eval_logs['r_avg_net_worth'] = avg_net_worth
+        self.eval_logs['r_avg_profit'] = avg_profit
+        self.eval_logs['r_avg_bal'] = avg_bal
+        self.eval_logs['r_avg_units_held'] = avg_units_held
+
+        self.env.render(buy_steps, buy_prices, sell_steps, sell_prices, idx, self.env.curr_step)
+
+        print(f'Max.Rewards: {max_reward} | Avg.Profit: {avg_profit} | Avg.Units: {avg_units_held} | Avg.Bal: {avg_bal}')
 
     def save_models(self):
         torch.save(self.target_net.state_dict(), f'{self.model_path}/target_net')
