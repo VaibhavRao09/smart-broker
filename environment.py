@@ -146,7 +146,7 @@ class SmartBrokerEnv(OpenAIEnv):
         elif action_type == Actions.Sell and units_sold == 0:
             reward = -5
         elif action_type == Actions.Hold:
-            reward = -50 + ((self.net_worth * alpha) / self.init_balance)
+            reward = -10 + ((self.net_worth * alpha) / self.init_balance)
         else:
             reward = (self.net_worth * alpha) / self.init_balance
 

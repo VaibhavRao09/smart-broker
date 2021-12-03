@@ -68,7 +68,7 @@ class DQN:
         step_size=0.001,
         episodes=1000,
         eval_episodes=50,
-        epsilon_start=0.3,
+        epsilon_start=0.8,
         epsilon_decay=0.9996,
         epsilon_min=0.01,
         load_pretrained=False,
@@ -255,6 +255,7 @@ class DQN:
         net_worth_l = deque(maxlen=self.roll_n)
 
         for ep_no in range(ep):
+            epsilon = max(epsilon*self.epsilon_decay, self.epsilon_min)
             ep_ended = False
             ep_reward = 0
             ep_loss = 0
@@ -350,18 +351,17 @@ class DQN:
         units_held = 0
 
         while not done and ts < 1000:
+            action, action_idx = self._get_action(state, 0)
             state, reward, done, info = self.env.step(
-                action=[self._get_action(state, 0)[0], 1],
+                action=[action, 1],
             )
+            print(info)
             ep_reward += info.get('reward')
             profit += info.get('profit')
             bal += info.get('balance')
             units_held += info.get('units_held')
             net_worth += info.get('net_worth')
             ts += 1
-
-            if e_num is not None:
-                self.eval_logs[e_num]['reward'] += reward
 
         return ep_reward/ts, profit/ts, bal/ts, units_held/ts, net_worth/ts, ts
 
