@@ -3,6 +3,7 @@ from gym import Env as OpenAIEnv
 from gym import spaces
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 MAX_INT = 2147483647
 MAX_STEPS = 20000
@@ -60,44 +61,64 @@ class SmartBrokerEnv(OpenAIEnv):
 
         if load_df:
             file = f'{self.source}_{self.entity}{self.market}_{self.year}_{self.duration_typ}.csv'
-            df = pd.read_csv(f'{self.data_dir}/{file}', skiprows=1, parse_dates=True)
-            df = df[self.df_info.get('cols')]
+            self.df = pd.read_csv(f'{self.data_dir}/{file}', skiprows=1)
+            self.df['date'] = pd.to_datetime(self.df['date'])
+            self.df.sort_values(by='date', inplace=True, ascending=True)
+            self.df.reset_index(inplace=True)
+            self.df = self.df[self.df_info.get('cols')]
             # process and initialise dataframe
-            self._process_df(df)
+            self._process_df()
 
-    def _process_df(self, df):
+        self.max_step = self.df.shape[0]
+
+    def _process_df(self):
         start_dt = self.df_info.get('start_date')
         end_dt = self.df_info.get('end_date')
         norm_cols = self.df_info.get('norm_cols')
-    
+
         # filter based on range
-        self.df = df.loc[(df['date'] > start_dt) & (df['date'] <= end_dt)]
-        self.df.reset_index()
+        self.df = self.df.loc[(self.df['date'] >= start_dt) & (self.df['date'] <= end_dt)]
         self.df[norm_cols] = self.df[norm_cols].apply(
             lambda x: (x - x.min()) / (x.max() - x.min()),
         )
         self.df['rolling_price'] = self.df[self.price_typ].rolling(self.roll_period).sum()
-        
-        self.df.sort_values('date', inplace=True)
-        
-    
+
     def _get_ptfo_ftrs(self):
         # normalise features
         return np.array([self.balance/MAX_INT, self.units_held/MAX_INT, self.net_worth/MAX_INT])
-                          
+
+    def _get_obs_between(self, start_dt, end_dt):
+        mask = (self.df['date'] >= start_dt) & (self.df['date'] <= end_dt)
+
+        prices = self.df.loc[mask, self.price_typ].values 
+        roll_prices = self.df.loc[mask, 'roll_prices'].values
+        volumes = self.df.loc[mask, f'Volume {self.entity}'].values
+        ptfo_ftrs = self._get_ptfo_ftrs()
+
+        obs = np.concatenate(
+            (
+                prices,
+                roll_prices,
+                volumes,
+                ptfo_ftrs,
+            )
+        )
+
+        return obs
+
     def _get_obs(self):
         prices = self.df.iloc[
             self.curr_step: self.curr_step + self.batch_dur
         ][self.price_typ].values 
-        
+
         roll_prices = self.df.iloc[
             self.curr_step: self.curr_step + self.batch_dur
         ]['rolling_price'].values 
-        
+
         volumes = self.df.iloc[
             self.curr_step: self.curr_step + self.batch_dur
         ][f'Volume {self.entity}'].values 
-        
+
         ptfo_ftrs = self._get_ptfo_ftrs()
 
         obs = np.concatenate(
@@ -146,13 +167,14 @@ class SmartBrokerEnv(OpenAIEnv):
         elif action_type == Actions.Sell and units_sold == 0:
             reward = -5
         elif action_type == Actions.Hold:
-            reward = -10 + ((self.net_worth * alpha) / self.init_balance)
+            reward = -5 + ((self.net_worth * alpha) / self.init_balance)
         else:
             reward = (self.net_worth * alpha) / self.init_balance
 
         info = {
             'amount': amount,
             'reward': reward,
+            'curr_price': curr_price,
             'curr_step': self.curr_step,
             'units_bought': units_bought,
             'units_sold': units_sold,
@@ -164,9 +186,11 @@ class SmartBrokerEnv(OpenAIEnv):
 
         return info
 
-    def reset(self):
+    def reset(self, idx=None):
+        if idx is None:
+            idx = self.roll_period
         self._init_portfolio()
-        self.curr_step = self.roll_period
+        self.curr_step = idx
         obs = self._get_obs()
         return obs
 
@@ -182,12 +206,18 @@ class SmartBrokerEnv(OpenAIEnv):
 
         return obs, reward, done, info
 
-    def render(self, show=False):
-        print(f'curr_step: {self.curr_step}')
-        print(f'balance: {self.balance}')
-        print(f'net_worth: {self.net_worth}')
-        print(f'units_held: {self.units_held}')
-        print(f'net_profit: {self.net_worth - self.init_balance}')
+    def render(self, *args):
+        buy_steps, buy_prices, sell_steps, sell_prices = args
+        start_step = max(self.roll_period, min(min(buy_steps), min(sell_steps)) - 5)
+        end_step = min(self.max_step, max(max(buy_steps), max(sell_steps)) + 5)
+        df = self.df.loc[start_step:end_step]
+        fig, ax = plt.subplots(1, 1, figsize=(6, 4))
+        ax.plot(df['date'], df['close'], color='black', label='XRP')
+        ax.scatter(df.loc[buy_steps, 'date'].values, buy_prices, c='green', alpha=0.5, label='buy')
+        ax.scatter(df.loc[sell_steps, 'date'].values, sell_prices, c='red', alpha=0.5, label='sell')
+        ax.legend()
+        ax.grid()
+        plt.show()
 
     def close(self):
         print('close')
