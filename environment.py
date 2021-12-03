@@ -166,10 +166,8 @@ class SmartBrokerEnv(OpenAIEnv):
             reward = -5
         elif action_type == Actions.Sell and units_sold == 0:
             reward = -5
-        elif action_type == Actions.Hold:
-            reward = -5 + ((self.net_worth * alpha) / self.init_balance)
         else:
-            reward = (self.net_worth * alpha) / self.init_balance
+            reward = self.net_worth * alpha
 
         info = {
             'amount': amount,
@@ -207,9 +205,9 @@ class SmartBrokerEnv(OpenAIEnv):
         return obs, reward, done, info
 
     def render(self, *args):
-        buy_steps, buy_prices, sell_steps, sell_prices = args
-        start_step = max(self.roll_period, min(min(buy_steps), min(sell_steps)) - 5)
-        end_step = min(self.max_step, max(max(buy_steps), max(sell_steps)) + 5)
+        buy_steps, buy_prices, sell_steps, sell_prices, start_step, end_step = args
+        start_step = max(self.roll_period, start_step-5)
+        end_step = min(self.df.shape[0], end_step+5)
         df = self.df.loc[start_step:end_step]
         fig, ax = plt.subplots(1, 1, figsize=(6, 4))
         ax.plot(df['date'], df['close'], color='black', label='XRP')

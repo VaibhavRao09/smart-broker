@@ -1,5 +1,6 @@
 from collections import defaultdict, deque
 
+from scipy import stats
 import numpy as np
 import torch
 from torch import FloatTensor as FT, tensor as T
@@ -227,20 +228,19 @@ class A2C:
         avg_units_held = int(np.mean(units_held_l))
         avg_profit = round(np.mean(profits), 2)
         avg_bal = round(np.mean(bals), 2)
-        avg_reward = round(np.mean(rewards), 2)
+        max_reward = round(stats.mode(rewards)[0][0], 2)
         avg_loss = round(np.mean(losses), 2)
 
         self.eval_logs['reward'] = ep_reward
-        self.eval_logs['r_avg_reward'] = avg_reward
         self.eval_logs['r_avg_loss'] = avg_loss
         self.eval_logs['r_avg_net_worth'] = avg_net_worth
         self.eval_logs['r_avg_profit'] = avg_profit
         self.eval_logs['r_avg_bal'] = avg_bal
         self.eval_logs['r_avg_units_held'] = avg_units_held
 
-        self.env.render(buy_steps, buy_prices, sell_steps, sell_prices)
+        self.env.render(buy_steps, buy_prices, sell_steps, sell_prices, idx, self.env.curr_step)
 
-        print(f'Avg.Reward: {avg_reward} | Avg.Profit: {avg_profit} | Avg.Units: {avg_units_held} | Avg.Bal: {avg_bal}')
+        print(f'Max.Rewards: {max_reward} | Avg.Profit: {avg_profit} | Avg.Units: {avg_units_held} | Avg.Bal: {avg_bal}')
 
     def run(self, ep=1000):
         rewards = deque(maxlen=50)
