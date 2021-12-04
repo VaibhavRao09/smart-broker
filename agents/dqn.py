@@ -340,7 +340,7 @@ class DQN:
         if self.save_pretrained:
             self.save_models()
 
-    def evaluate(self, start_dt, duration):
+    def evaluate(self, start_dt, duration, show_logs=False):
         idx = self.env.df.loc[self.env.df['date'] == start_dt].index[0]
         rewards = deque(maxlen=duration)
         profits = deque(maxlen=duration)
@@ -389,7 +389,7 @@ class DQN:
         avg_units_held = int(np.mean(units_held_l))
         avg_profit = round(np.mean(profits), 2)
         avg_bal = round(np.mean(bals), 2)
-        max_reward = round(stats.mode(rewards)[0][0], 2)
+        avg_reward = round(np.mean(rewards), 2)
         avg_loss = round(np.mean(losses), 2)
 
         self.eval_logs['reward'] = ep_reward
@@ -399,9 +399,9 @@ class DQN:
         self.eval_logs['r_avg_bal'] = avg_bal
         self.eval_logs['r_avg_units_held'] = avg_units_held
 
-        self.env.render(buy_steps, buy_prices, sell_steps, sell_prices, idx, self.env.curr_step)
+        self.env.render(buy_steps, buy_prices, sell_steps, sell_prices, idx, self.env.curr_step, show_logs)
 
-        print(f'Max.Rewards: {max_reward} | Avg.Profit: {avg_profit} | Avg.Units: {avg_units_held} | Avg.Bal: {avg_bal}')
+        print(f'Avg.Rewards: {avg_reward} | Avg.Profit: {avg_profit} | Avg.Units: {avg_units_held} | Avg.Bal: {avg_bal}')
 
     def save_models(self):
         torch.save(self.target_net.state_dict(), f'{self.model_path}/target_net')
