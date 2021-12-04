@@ -6,7 +6,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 MAX_INT = 2147483647
-MAX_STEPS = 20000
+MAX_STEPS = 50000
 
 
 class Actions:
@@ -56,6 +56,8 @@ class SmartBrokerEnv(OpenAIEnv):
         self.duration_typ = self.portfolio.get('duration_typ', 'minute')
         self.price_typ = self.portfolio.get('price_typ', 'close')
         self.roll_period = self.portfolio.get('roll_period', 30)
+        self.start_dt = self.df_info.get('start_date')
+        self.end_dt = self.df_info.get('end_date')
         self.units_held = 0
         self.net_worth = self.balance
 
@@ -72,14 +74,13 @@ class SmartBrokerEnv(OpenAIEnv):
         self.max_step = self.df.shape[0]
 
     def _process_df(self):
-        # start_dt = self.df_info.get('start_date')
-        # end_dt = self.df_info.get('end_date')
         norm_cols = self.df_info.get('norm_cols')
 
         self.df[norm_cols] = self.df[norm_cols].apply(
             lambda x: (x - x.min()) / (x.max() - x.min()),
         )
         self.df['rolling_price'] = self.df[self.price_typ].rolling(self.roll_period).sum()
+        self.df['rsi'] = self._rsi(self.df[self.price_typ])
         self.df_main = self.df.copy()
         # filter based on range
         # self.df = self.df.loc[(self.df['date'] >= start_dt) & (self.df['date'] <= end_dt)]
@@ -100,6 +101,10 @@ class SmartBrokerEnv(OpenAIEnv):
         volumes = self.df.iloc[
             self.curr_step: self.curr_step + self.batch_dur
         ][f'Volume {self.entity}'].values 
+        
+        rsi = self.df.iloc[
+            self.curr_step: self.curr_step + self.batch_dur
+        ][f'rsi'].values 
 
         ptfo_ftrs = self._get_ptfo_ftrs()
 
@@ -108,11 +113,21 @@ class SmartBrokerEnv(OpenAIEnv):
                 prices,
                 roll_prices,
                 volumes,
+                rsi,
                 ptfo_ftrs,
             )
         )
 
         return obs
+    
+    def _rsi(self, prices, com=13):
+        delta = prices.diff()
+        up = delta.clip(lower=0)
+        down = -1 * delta.clip(upper=0)
+        ema_up = up.ewm(com=com, adjust=False).mean()
+        ema_down = down.ewm(com=com, adjust=False).mean()
+        rs = ema_up/ema_down
+        return rs
 
     def _act(self, action):
         # default to selling or buying all the stocks
@@ -147,7 +162,7 @@ class SmartBrokerEnv(OpenAIEnv):
         if action_type == Actions.Buy and total_possible == 0:
             reward = -10
         elif action_type == Actions.Sell and self.units_held == 0:
-            reward = -10
+            reward = -8
         else:
             reward = self.units_held * curr_price - self.init_balance
 
@@ -171,7 +186,7 @@ class SmartBrokerEnv(OpenAIEnv):
         if idx is None:
             idx = self.roll_period
         self._init_portfolio()
-        self.curr_step = idx
+        self.curr_step = random.randint(idx, self.df[self.df.date == self.end_dt].index[0])
         obs = self._get_obs()
         return obs
 
