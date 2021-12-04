@@ -166,7 +166,7 @@ class A2C:
 
         return net_loss.item(), ep_reward/ts, profit/ts, bal/ts, units_held/ts, net_worth/ts
 
-    def evaluate(self, start_dt, duration, show_logs=False):
+    def evaluate(self, start_dt, duration, show_logs=False, show_pred=False):
         idx = self.env.df.loc[self.env.df['date'] == start_dt].index[0]
         rewards = deque(maxlen=duration)
         profits = deque(maxlen=duration)
@@ -178,6 +178,11 @@ class A2C:
         sell_steps = []
         buy_prices = []
         sell_prices = []
+        actions = []
+        want_to_buy_prices = []
+        want_to_buy_steps = []
+        want_to_sell_prices = []
+        want_to_sell_steps = []
         state = self.env.reset(idx)
         state = FT(state)
 
@@ -202,16 +207,25 @@ class A2C:
             net_worth = info.get('net_worth')
             curr_step = info.get('curr_step')
             curr_price = info.get('curr_price')
+            action = info.get('action')
             units_bought = info.get('units_bought')
             units_sold = info.get('units_sold')
             state = FT(nxt_state)
 
-            if units_bought != 0:
-                buy_prices.append(curr_price)
-                buy_steps.append(curr_step)
-            elif units_sold != 0:
-                sell_prices.append(curr_price)
-                sell_steps.append(curr_step)
+            if action == 0:
+                if units_bought != 0:
+                    buy_prices.append(curr_price)
+                    buy_steps.append(curr_step)
+                else:
+                    want_to_buy_prices.append(curr_price)
+                    want_to_buy_steps.append(curr_step)
+            elif action == 1:
+                if units_sold != 0:
+                    sell_prices.append(curr_price)
+                    sell_steps.append(curr_step)
+                else:
+                    want_to_sell_prices.append(curr_price)
+                    want_to_sell_steps.append(curr_step)
 
             ep_reward = round(ep_reward, 2)
             profit = round(profit, 2)
@@ -239,9 +253,23 @@ class A2C:
         self.eval_logs['r_avg_bal'] = avg_bal
         self.eval_logs['r_avg_units_held'] = avg_units_held
 
-        self.env.render(buy_steps, buy_prices, sell_steps, sell_prices, idx, self.env.curr_step, show_logs)
+        self.env.render(
+            buy_steps,
+            buy_prices,
+            sell_steps,
+            sell_prices,
+            want_to_buy_prices,
+            want_to_buy_steps,
+            want_to_sell_prices,
+            want_to_sell_steps,
+            idx,
+            self.env.curr_step,
+            show_logs,
+            show_pred,
+        )
 
         print(f'Avg.Rewards: {avg_reward} | Tot.Profit: {net_gains} | Avg.Profit: {avg_profit} | Avg.Units: {avg_units_held} ')
+        return rewards, profits, actions
 
     def run(self, ep=1000):
         rewards = deque(maxlen=50)

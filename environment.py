@@ -72,39 +72,21 @@ class SmartBrokerEnv(OpenAIEnv):
         self.max_step = self.df.shape[0]
 
     def _process_df(self):
-        start_dt = self.df_info.get('start_date')
-        end_dt = self.df_info.get('end_date')
+        # start_dt = self.df_info.get('start_date')
+        # end_dt = self.df_info.get('end_date')
         norm_cols = self.df_info.get('norm_cols')
 
-        # filter based on range
-        self.df = self.df.loc[(self.df['date'] >= start_dt) & (self.df['date'] <= end_dt)]
         self.df[norm_cols] = self.df[norm_cols].apply(
             lambda x: (x - x.min()) / (x.max() - x.min()),
         )
         self.df['rolling_price'] = self.df[self.price_typ].rolling(self.roll_period).sum()
+        self.df_main = self.df.copy()
+        # filter based on range
+        # self.df = self.df.loc[(self.df['date'] >= start_dt) & (self.df['date'] <= end_dt)]
 
     def _get_ptfo_ftrs(self):
         # normalise features
         return np.array([self.balance/MAX_INT, self.units_held/MAX_INT, self.net_worth/MAX_INT])
-
-    def _get_obs_between(self, start_dt, end_dt):
-        mask = (self.df['date'] >= start_dt) & (self.df['date'] <= end_dt)
-
-        prices = self.df.loc[mask, self.price_typ].values 
-        roll_prices = self.df.loc[mask, 'roll_prices'].values
-        volumes = self.df.loc[mask, f'Volume {self.entity}'].values
-        ptfo_ftrs = self._get_ptfo_ftrs()
-
-        obs = np.concatenate(
-            (
-                prices,
-                roll_prices,
-                volumes,
-                ptfo_ftrs,
-            )
-        )
-
-        return obs
 
     def _get_obs(self):
         prices = self.df.iloc[
@@ -165,7 +147,7 @@ class SmartBrokerEnv(OpenAIEnv):
         if action_type == Actions.Buy and total_possible == 0:
             reward = -10
         elif action_type == Actions.Sell and self.units_held == 0:
-            reward = -20
+            reward = -10
         else:
             reward = self.units_held * curr_price - self.init_balance
 
@@ -173,6 +155,7 @@ class SmartBrokerEnv(OpenAIEnv):
             'amount': amount,
             'reward': reward,
             'curr_price': curr_price,
+            'action': action_type,
             'curr_step': self.curr_step,
             'units_bought': units_bought,
             'units_sold': units_sold,
@@ -205,17 +188,24 @@ class SmartBrokerEnv(OpenAIEnv):
         return obs, reward, done, info
 
     def render(self, *args):
-        buy_steps, buy_prices, sell_steps, sell_prices, start_step, end_step, show_logs = args
+        buy_s, buy_p, sell_s, sell_p, pred_buy_p, pred_buy_s, pred_sell_p, pred_sell_s, start_step, end_step, show_logs, show_pred = args
+        
         if show_logs:
             print(f'Buy Steps: {buy_steps}')
             print(f'Sell Steps: {sell_steps}')
+            
         start_step = max(self.roll_period, start_step-5)
         end_step = min(self.df.shape[0], end_step+5)
-        df = self.df.loc[start_step:end_step]
+        df = self.df_main.loc[start_step:end_step]
         fig, ax = plt.subplots(1, 1, figsize=(14, 4))
+        
         ax.plot(df['date'], df['close'], color='black', label='XRP')
-        ax.scatter(df.loc[buy_steps, 'date'].values, buy_prices, c='green', alpha=0.5, label='buy')
-        ax.scatter(df.loc[sell_steps, 'date'].values, sell_prices, c='red', alpha=0.5, label='sell')
+        ax.scatter(df.loc[buy_s, 'date'].values, buy_p, c='green', alpha=0.5, label='buy')
+        ax.scatter(df.loc[sell_s, 'date'].values, sell_p, c='red', alpha=0.5, label='sell')
+        if show_pred:
+            ax.scatter(df.loc[pred_buy_s, 'date'].values, pred_buy_p, c='blue', alpha=0.5, label='predicted buy')
+            ax.scatter(df.loc[pred_sell_s, 'date'].values, pred_sell_p, c='orange', alpha=0.5, label='predicted sell')
+        
         ax.legend()
         ax.grid()
         plt.xticks(rotation=45)

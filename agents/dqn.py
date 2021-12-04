@@ -1,7 +1,6 @@
 from collections import defaultdict, deque
 import os
 
-from scipy import stats
 import numpy as np
 import torch
 
