@@ -6,7 +6,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 MAX_INT = 2147483647
-MAX_STEPS = 50000
+MAX_STEPS = 60000
 
 
 class Actions:
@@ -123,8 +123,8 @@ class SmartBrokerEnv(OpenAIEnv):
                 volumes,
                 rsi,
                 ptfo_ftrs,
-                BOLU,
-                BOLD,
+#                 BOLU,
+#                 BOLD,
             )
         )
 
@@ -176,15 +176,18 @@ class SmartBrokerEnv(OpenAIEnv):
             self.balance += units_sold * curr_price
             self.units_held -= units_sold
 
-        self.net_worth = self.balance + self.units_held * curr_price
+#         self.net_worth = self.balance + self.units_held * curr_price
 
         if action_type == Actions.Buy and total_possible == 0:
             reward = -10
         elif action_type == Actions.Sell and self.units_held == 0:
             reward = -5
         else:
-            reward = self.units_held * curr_price - self.init_balance
-
+            if(self.net_worth>100):
+                reward = self.units_held * curr_price - self.init_balance +5
+            else:
+                reward = self.units_held * curr_price - self.init_balance
+        self.net_worth = self.balance + self.units_held * curr_price
         info = {
             'amount': amount,
             'reward': reward,
@@ -196,8 +199,9 @@ class SmartBrokerEnv(OpenAIEnv):
             'balance': self.balance,
             'net_worth': self.net_worth,
             'units_held': self.units_held,
-            'profit': (self.units_held * curr_price) - self.init_balance,
+            'profit': self.net_worth - self.init_balance,
         }
+        
 
         return info
 
@@ -205,7 +209,7 @@ class SmartBrokerEnv(OpenAIEnv):
         if idx is None:
             idx = self.roll_period
         self._init_portfolio()
-        self.curr_step = random.randint(idx, self.df[self.df.date == self.end_dt].index[0])
+        self.curr_step = idx
         obs = self._get_obs()
         return obs
 
