@@ -244,7 +244,7 @@ class A2C:
         avg_bal = round(np.mean(bals), 2)
         avg_reward = round(np.mean(rewards), 2)
         avg_loss = round(np.mean(losses), 2)
-        net_gains = round(sum(profits), 2)
+        max_gains = round(max(profits), 2)
 
         self.eval_logs['reward'] = ep_reward
         self.eval_logs['r_avg_loss'] = avg_loss
@@ -268,7 +268,7 @@ class A2C:
             show_pred,
         )
 
-        print(f'Avg.Rewards: {avg_reward} | Tot.Profit: {net_gains} | Avg.Profit: {avg_profit} | Avg.Units: {avg_units_held} ')
+        print(f'Avg.Rewards: {avg_reward} | Max.Profit: {max_gains} | Avg.Profit: {avg_profit} | Avg.Units: {avg_units_held} ')
         return rewards, profits, actions
 
     def run(self, ep=1000):
