@@ -81,6 +81,7 @@ class SmartBrokerEnv(OpenAIEnv):
         )
         self.df['rolling_price'] = self.df[self.price_typ].rolling(self.roll_period).sum()
         self.df['rsi'] = self._rsi(self.df[self.price_typ])
+        self.df['bolu'], self.df['bold'] = self._bollingerbands()
         self.df_main = self.df.copy()
         # filter based on range
         # self.df = self.df.loc[(self.df['date'] >= start_dt) & (self.df['date'] <= end_dt)]
@@ -107,14 +108,23 @@ class SmartBrokerEnv(OpenAIEnv):
         ][f'rsi'].values 
 
         ptfo_ftrs = self._get_ptfo_ftrs()
+        
+        BOLU=self.df.iloc[self.curr_step: self.curr_step + self.batch_dur
+        ][f'bolu'].values
+
+
+        BOLD=self.df.iloc[self.curr_step: self.curr_step + self.batch_dur
+        ][f'bold'].values
 
         obs = np.concatenate(
             (
                 prices,
                 roll_prices,
                 volumes,
-                # rsi,
+                rsi,
                 ptfo_ftrs,
+                BOLU,
+                BOLD,
             )
         )
 
@@ -128,6 +138,15 @@ class SmartBrokerEnv(OpenAIEnv):
         ema_down = down.ewm(com=com, adjust=False).mean()
         rs = ema_up/ema_down
         return rs
+    
+    def _bollingerbands(self):
+        df=self.df
+        df['TP'] = (df['close'] + df['low'] + df['high'])/3
+        df['std'] = df['TP'].rolling(self.roll_period).std(ddof=0)
+        df['MA-TP'] = df['TP'].rolling(self.roll_period).mean()
+        df['bolu'] = df['MA-TP'] + 2*df['std']
+        df['bold'] = df['MA-TP'] - 2*df['std']
+        return df['bolu'].values,df['bold'].values
 
     def _act(self, action):
         # default to selling or buying all the stocks
