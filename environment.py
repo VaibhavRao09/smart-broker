@@ -42,7 +42,7 @@ class SmartBrokerEnv(OpenAIEnv):
         self.observation_space = spaces.Box(
             low=0,
             high=1,
-            shape=(self.batch_dur*3 + 3, 1),
+            shape=(self.batch_dur*4 + 3, 1),
             dtype=np.uint8,
         )
 
@@ -205,11 +205,14 @@ class SmartBrokerEnv(OpenAIEnv):
 
         return info
 
-    def reset(self, idx=None):
+    def reset(self, idx=None, randomize=False):
         if idx is None:
             idx = self.roll_period
         self._init_portfolio()
-        self.curr_step = idx
+        if not randomize:
+            self.curr_step = idx
+        else:
+            self.curr_step = random.randint(idx, self.df[self.df.date == self.end_dt].index[0])
         obs = self._get_obs()
         return obs
 
