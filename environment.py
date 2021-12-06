@@ -102,18 +102,17 @@ class SmartBrokerEnv(OpenAIEnv):
         volumes = self.df.iloc[
             self.curr_step: self.curr_step + self.batch_dur
         ][f'Volume {self.entity}'].values 
-        
+
         rsi = self.df.iloc[
             self.curr_step: self.curr_step + self.batch_dur
         ][f'rsi'].values 
 
         ptfo_ftrs = self._get_ptfo_ftrs()
-        
-        BOLU=self.df.iloc[self.curr_step: self.curr_step + self.batch_dur
+
+        BOLU = self.df.iloc[self.curr_step: self.curr_step + self.batch_dur
         ][f'bolu'].values
 
-
-        BOLD=self.df.iloc[self.curr_step: self.curr_step + self.batch_dur
+        BOLD = self.df.iloc[self.curr_step: self.curr_step + self.batch_dur
         ][f'bold'].values
 
         obs = np.concatenate(
@@ -123,13 +122,13 @@ class SmartBrokerEnv(OpenAIEnv):
                 volumes,
                 rsi,
                 ptfo_ftrs,
-#                 BOLU,
-#                 BOLD,
+                BOLU,
+                BOLD,
             )
         )
 
         return obs
-    
+
     def _rsi(self, prices, com=13):
         delta = prices.diff()
         up = delta.clip(lower=0)
@@ -138,7 +137,7 @@ class SmartBrokerEnv(OpenAIEnv):
         ema_down = down.ewm(com=com, adjust=False).mean()
         rs = ema_up/ema_down
         return rs
-    
+
     def _bollingerbands(self):
         df=self.df
         df['TP'] = (df['close'] + df['low'] + df['high'])/3
@@ -201,7 +200,6 @@ class SmartBrokerEnv(OpenAIEnv):
             'units_held': self.units_held,
             'profit': self.net_worth - self.init_balance,
         }
-        
 
         return info
 
@@ -230,23 +228,23 @@ class SmartBrokerEnv(OpenAIEnv):
 
     def render(self, *args):
         buy_s, buy_p, sell_s, sell_p, pred_buy_p, pred_buy_s, pred_sell_p, pred_sell_s, start_step, end_step, show_logs, show_pred = args
-        
+
         if show_logs:
             print(f'Buy Steps: {buy_s}')
             print(f'Sell Steps: {sell_s}')
-            
+
         start_step = max(self.roll_period, start_step-5)
         end_step = min(self.df.shape[0], end_step+5)
         df = self.df_main.loc[start_step:end_step]
         fig, ax = plt.subplots(1, 1, figsize=(14, 4))
-        
+
         ax.plot(df['date'], df['close'], color='black', label='XRP')
         ax.scatter(df.loc[buy_s, 'date'].values, buy_p, c='green', alpha=0.5, label='buy')
         ax.scatter(df.loc[sell_s, 'date'].values, sell_p, c='red', alpha=0.5, label='sell')
         if show_pred:
             ax.scatter(df.loc[pred_buy_s, 'date'].values, pred_buy_p, c='blue', alpha=0.5, label='predicted buy')
             ax.scatter(df.loc[pred_sell_s, 'date'].values, pred_sell_p, c='orange', alpha=0.5, label='predicted sell')
-        
+
         ax.legend()
         ax.grid()
         plt.xticks(rotation=45)
