@@ -84,7 +84,7 @@ class A2C:
 
     def train(self):
         exp = []
-        state = self.env.reset()
+        state = self.env.reset(randomize=True)
         ts = 0
         ep_ended = False
         ep_reward = 0
@@ -183,7 +183,7 @@ class A2C:
         want_to_buy_steps = []
         want_to_sell_prices = []
         want_to_sell_steps = []
-        state = self.env.reset(idx)
+        state = self.env.reset(idx, randomize=False)
         state = FT(state)
 
         for _ in range(duration):

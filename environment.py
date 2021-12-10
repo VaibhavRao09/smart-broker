@@ -122,11 +122,12 @@ class SmartBrokerEnv(OpenAIEnv):
                 volumes,
                 rsi,
                 ptfo_ftrs,
-                BOLU,
-                BOLD,
+#                 BOLU,
+#                 BOLD,
             )
         )
-
+#         obs = np.expand_dims(obs, axis=0).T
+#         print(obs.shape)
         return obs
 
     def _rsi(self, prices, com=13):
@@ -175,18 +176,18 @@ class SmartBrokerEnv(OpenAIEnv):
             self.balance += units_sold * curr_price
             self.units_held -= units_sold
 
-#         self.net_worth = self.balance + self.units_held * curr_price
+        self.net_worth = self.balance + self.units_held * curr_price
+        
+        if self.net_worth > 100:
+            reward = self.units_held * curr_price - self.init_balance + 5
+        else:
+            reward = self.units_held * curr_price - self.init_balance
 
         if action_type == Actions.Buy and total_possible == 0:
-            reward = -10
+            reward = -reward
         elif action_type == Actions.Sell and self.units_held == 0:
-            reward = -5
-        else:
-            if(self.net_worth>100):
-                reward = self.units_held * curr_price - self.init_balance +5
-            else:
-                reward = self.units_held * curr_price - self.init_balance
-        self.net_worth = self.balance + self.units_held * curr_price
+            reward = -reward
+
         info = {
             'amount': amount,
             'reward': reward,
